@@ -29,7 +29,7 @@ export default function App() {
     setError(null);
     setSuccessMsg(null);
     try {
-      const res = await fetch("/enrich", {
+      const res = await fetch("https://unihack-faucets-enrichment-engine.onrender.com/enrich", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -73,10 +73,12 @@ export default function App() {
     formData.append("file", selectedFile);
 
     try {
-      const res = await fetch("/enrich/upload-csv", {
-        method: "POST",
-        body: formData,
-      });
+      const res = await fetch(
+        "https://unihack-faucets-enrichment-engine.onrender.com/enrich/upload-csv",
+        {
+          method: "POST",
+          body: formData,
+        });
 
       if (!res.ok) {
         const errJson = await res.json().catch(() => null);
