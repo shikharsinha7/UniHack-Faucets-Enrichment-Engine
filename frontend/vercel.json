@@ -1,0 +1,12 @@
+{
+    "rewrites": [
+        {
+            "source": "/enrich",
+            "destination": "https://unihack-faucets-enrichment-engine.onrender.com/enrich"
+        },
+        {
+            "source": "/health",
+            "destination": "https://unihack-faucets-enrichment-engine.onrender.com/health"
+        }
+    ]
+}
