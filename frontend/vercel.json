@@ -1,12 +1,16 @@
 {
-    "rewrites": [
-        {
-            "source": "/enrich",
-            "destination": "https://unihack-faucets-enrichment-engine.onrender.com/enrich"
-        },
-        {
-            "source": "/health",
-            "destination": "https://unihack-faucets-enrichment-engine.onrender.com/health"
-        }
-    ]
+  "rewrites": [
+    {
+      "source": "/enrich",
+      "destination": "https://unihack-faucets-enrichment-engine.onrender.com/enrich"
+    },
+    {
+      "source": "/enrich/:path*",
+      "destination": "https://unihack-faucets-enrichment-engine.onrender.com/enrich/:path*"
+    },
+    {
+      "source": "/health",
+      "destination": "https://unihack-faucets-enrichment-engine.onrender.com/health"
+    }
+  ]
 }
