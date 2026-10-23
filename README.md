@@ -1,132 +1,75 @@
-# Faucets Enrichment & Trust Engine — UniHack (Unilog x Hack2Skill)
+# Faucets Enrichment & Trust Engine
 
-Scoped, per the Solution Guide's own advice ("depth beats breadth... one
-category done fully... Faucets... is an excellent scope for a demo"), to
-**one category done properly** rather than a shallow pass over all 1,000
-sample rows or all 252 output columns.
+Product-data enrichment for one category, faucets. Given a raw distributor row (part number, description and up to four brand fields), it works out the manufacturer, pulls specifications from the manufacturer's own website, and produces validated attributes plus four listing descriptions. Gemini proposes values; plain Python decides which of them are allowed.
 
-## The honest disclosure (say this in your pitch, don't hide it)
+Built in August 2026 for UniHack (Unilog x Hack2Skill). The entry was not submitted.
 
-The Solution Guide describes seven reference files (content guidelines,
-Faucets LOV, UOM standards, manufacturer/brand master list, etc.) as the
-rule book for correct output. **Only three files were ever actually
-distributed via the dashboard**: the Solution Guide itself, the 1,000-row
-sample input, and one worked example (a dishwasher). The other six —
-including the two we need most, `UNILOG_INTERNAL_CONTENT_GUIDELINES.docx`
-and `FAUCETS_LOV.xlsx` — are Unilog's proprietary internal data and were
-never released to participants.
+**Stack:** Python, FastAPI, Pydantic, SQLAlchemy (SQLite by default, Postgres through `DATABASE_URL`), Google Gemini (structured output), Tavily search, React with Vite. Deployed with the frontend on Vercel and the backend on Render's free tier, so the first request after the backend has been idle is slow.
 
-**No team has the real files.** So instead of pretending otherwise, this
-build:
-1. Hand-curates a defensible Faucets vocabulary (`app/data/faucets_lov.py`)
-   from how real plumbing distributors (Ferguson, Build.com) structure
-   attributes, plus real certification programs (WaterSense, cUPC, ADA).
-2. Hand-curates a real manufacturer/brand list (`app/data/manufacturers.py`)
-   — Moen, Delta, Kohler, American Standard, GROHE, Pfister, etc. — with
-   correct legal names and ® symbols.
-3. Reverse-engineers description formulas (`app/content_rules.py`) from the
-   one worked example the guide does show, generalized to Faucets.
-4. Architects every one of these as a **swappable, isolated module** — if
-   the real files surface later (dashboard, email reply, or on-site at
-   the hackathon), only these three files change. Nothing else in the
-   pipeline needs touching.
+## How it works
 
-Say exactly this in your deck. Judges built this challenge — they'll
-recognize the constraint immediately, and showing you understood and
-architected around it beats either ignoring it or building something
-fragile on invented data without saying so.
+Three stages, run per product:
 
-## Architecture (the 3 stages we chose, per "pick 2-3 steps")
+1. **Identify the manufacturer.** Placeholder brand values such as `-- Unbranded --` are stripped. The manufacturer is matched against a curated master list (`app/data/manufacturers.py`), using the distributor's own fields first and a web search as the fallback. The taxonomy is fixed to `Plumbing & HVAC > Kitchen & Bath Fixtures > Faucets`.
+2. **Extract attributes against a controlled vocabulary.** Retrieval runs in two phases (`app/retrieval.py`): an identity search that excludes marketplaces and distributors (Amazon, Home Depot, Ferguson and others), then a specification search limited to the manufacturer's own domain through Tavily's `include_domains`. Gemini extracts candidate values from those sources into a fixed schema. Every value is then checked in Python against the faucet vocabulary (`app/data/faucets_lov.py`, `app/normalization.py`), and values outside it are rejected.
+3. **Assemble descriptions in code.** The invoice, mobile, short and long descriptions are built from validated facts by `app/content_rules.py`, with the character limits enforced in code: at most 40 characters for the invoice line, 60 to 80 for the mobile line.
 
-1. **Classification + normalization** — placeholder brand fields
-   (`-- Unbranded --` etc.) stripped, manufacturer/brand matched against
-   the curated master list (distributor's own field first, web search
-   fallback), taxonomy fixed to `Plumbing & HVAC>Kitchen & Bath
-   Fixtures>Faucets`.
-2. **LOV-constrained attribute extraction** — Gemini extracts candidate
-   values from the description + manufacturer-only sources; every value
-   is then validated in plain Python against the Faucets LOV
-   (`app/normalization.py`) — off-vocabulary values are dropped, not kept.
-3. **Deterministic description assembly** — the four formats (Invoice,
-   Mobile, Short, Long) are built by code from validated facts, with
-   character limits (≤40 CAPS / 60-80) **enforced in code**, not hoped
-   for from the LLM.
+**Confidence scoring** (`app/confidence.py`). A field supported by two or more distinct manufacturer sources scores HIGH, one source MEDIUM, none LOW. An attribute that fails the vocabulary check is capped at LOW whatever its sources. A record's overall confidence is its weakest field, and LOW records are flagged for human review.
 
-**Sourcing rule compliance**: retrieval runs in two phases
-(`app/retrieval.py`) — an identity search that explicitly excludes
-marketplaces/distributors (Amazon, Ferguson, Home Depot, etc.), then a
-spec search restricted to the identified manufacturer's own domain only,
-via Tavily's `include_domains`. This directly satisfies the guide's
-"manufacturer's own site or documentation... marketplaces and distributor
-sites are explicitly excluded" rule.
+## About the reference data
 
-**Confidence scoring** now has a hard gate: an attribute with 3 supporting
-sources that still isn't a valid LOV value scores LOW, full stop — see
-`app/confidence.py`. This is the direct answer to "the output is
-constrained, not creative... a fluent description made of invented values
-scores zero."
+The challenge's guide describes seven reference files, including Unilog's content guidelines and the faucet list of values. Only three were distributed to participants: the guide, a 1,000-row sample input and one worked example (a dishwasher). So the vocabulary, the manufacturer list and the description rules here are hand-curated:
 
-## Setup
+- the vocabulary from how plumbing distributors structure faucet attributes and from certification programmes (WaterSense, cUPC, ADA);
+- the manufacturer list from the major brands' legal names;
+- the description rules from the one worked example.
 
-### Backend
+Each lives in its own module, so real reference files would replace three files and nothing else.
+
+The 1,000-row sample contains no faucets, so testing used real faucet part numbers, for example Moen 7594, Delta 9178-AR-DST and Kohler K-596-VS.
+
+## Run it
+
+Backend:
+
 ```bash
 cd backend
 python -m venv venv
-source venv/bin/activate   # Windows: venv\Scripts\activate
+source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env       # fill in GEMINI_API_KEY and TAVILY_API_KEY
+cp .env.example .env            # set GEMINI_API_KEY and TAVILY_API_KEY
 uvicorn app.main:app --reload --port 8000
 ```
 
-### Frontend
+Frontend:
+
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-## Testing — the sample dataset doesn't contain faucets
+## API
 
-We checked: the provided 1,000-row `Sample-1000_Items.xlsx` (your uploaded
-CSV) has **zero real faucet products** in it — it's general industrial
-parts. Don't waste time hunting for faucet rows in it. Instead, test with
-real faucet part numbers directly:
+| Endpoint | Purpose |
+|---|---|
+| `POST /enrich` | Enrich one product |
+| `POST /enrich/batch` | Enrich a list of products |
+| `POST /enrich/upload-csv` | Enrich a CSV in the challenge's six-column format |
+| `GET /products` | Saved results, most recent first |
+| `GET /products/review-queue` | Saved results flagged for human review |
+| `GET /health` | Health check |
 
-| Mfg_Part_Num | Part_Desc | Part_Manuf |
-|---|---|---|
-| 7594 | Moen 7594 Arbor Pulldown Kitchen Faucet | Moen Inc |
-| 9178-AR-DST | Delta 9178-AR-DST Trinsic Single Handle Pull-Down | Delta Faucet Co |
-| K-596-VS | Kohler K-596-VS Simplice Pull-Down Kitchen Faucet | Kohler Co |
+## Evaluation
 
-These are real, well-documented products from major manufacturers, so
-retrieval should find manufacturer-domain sources and you should see a mix
-of HIGH/MEDIUM confidence, not everything defaulting to LOW. Try a made-up
-or obscure part number too, to confirm it correctly flags `needs_human_review`.
+`python -m app.evaluation path/to/batch_response.json` reports character-limit compliance and the share of attribute values found in the vocabulary for any saved batch. Field-level accuracy needs the challenge's 200-row ground-truth file, which was not distributed; `score_against_ground_truth` is ready for it.
 
-## Evaluation — run this before the deck
+## Limitations
 
-```bash
-# after testing a batch, save the response JSON, then:
-python -m app.evaluation path/to/batch_response.json
-```
+- One category only, and the vocabulary is hand-curated rather than Unilog's official list.
+- Results depend on two external APIs (Gemini and Tavily); rate limits or outages produce flagged or empty results.
+- On Render's free tier the SQLite file lives on an ephemeral disk, so saved results do not survive a redeploy. Set `DATABASE_URL` to a Postgres database to keep them.
+- The frontend filters results by flagged and verified; there is no separate review-queue screen.
+- No automated tests yet.
 
-Reports the three metrics the guide says judges look for: character-limit
-compliance %, LOV-match %, and (if you obtain the real 200-item ground
-truth) field-level accuracy. See `app/evaluation.py` docstring for how to
-plug in the real ground truth file if it surfaces.
-
-## What's intentionally NOT built yet
-
-1. CSV batch upload wired into the frontend (backend endpoint `/enrich/upload-csv` already works — accepts the real 6-column format)
-2. Persistence (Postgres/Supabase)
-3. Review-queue UI view
-4. Deploy config
-
-See `PROMPTS.md`.
-
-## Day-by-day (adjust as you go)
-
-- **Now–Aug 15**: get this running, test the 3 real faucet part numbers above, run the evaluation script, confirm the numbers look defensible
-- **Aug 16–20**: CSV batch flow, review queue, architecture diagram, deploy
-- **Aug 21–22**: demo video, fill in the mandatory .pptx template
-- **Aug 23 morning**: final cleanup, submit
+Notes from the hackathon itself are in [`docs/hackathon-notes.md`](./docs/hackathon-notes.md).
